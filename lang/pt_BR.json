@@ -1,0 +1,11 @@
+{
+    "nome": "nome",
+    "email": "e-mail",
+    "password": "senha",
+    "password_confirmation": "confirmação de senha",
+    "senha_atual": "senha atual",
+    "imagem": "foto de perfil",
+    "clinica_id": "clínica",
+    "role": "papel",
+    "tipo": "tipo"
+}
