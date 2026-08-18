@@ -466,9 +466,14 @@
       }
 
       // ---------- dados de itens (geram aplicação?) ----------
-      const MEDS = @json($medicamentos->map(fn ($m) => ['id' => $m->id, 'nome' => $m->nome, 'gera' => strtolower(trim((string) $m->aplicacao)) === 'sim', 'ferro' => $m->ehFerro()]));
-      const COMBOS = @json($combos->map(fn ($c) => ['id' => $c->id, 'nome' => $c->nome, 'gera' => (bool) $c->gera_aplicacao]));
-      const SOROS = @json($soros->map(fn ($s) => ['id' => $s->id, 'nome' => $s->nome, 'gera' => (bool) $s->gera_aplicacao]));
+      @php
+        $medsJson = $medicamentos->map(fn ($m) => ['id' => $m->id, 'nome' => $m->nome, 'gera' => strtolower(trim((string) $m->aplicacao)) === 'sim', 'ferro' => $m->ehFerro()]);
+        $combosJson = $combos->map(fn ($c) => ['id' => $c->id, 'nome' => $c->nome, 'gera' => (bool) $c->gera_aplicacao]);
+        $sorosJson = $soros->map(fn ($s) => ['id' => $s->id, 'nome' => $s->nome, 'gera' => (bool) $s->gera_aplicacao]);
+      @endphp
+      const MEDS = @json($medsJson);
+      const COMBOS = @json($combosJson);
+      const SOROS = @json($sorosJson);
 
       let state = { weeks: [], items: [] };
 
