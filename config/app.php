@@ -58,6 +58,11 @@ return [
 
     'asset_url' => env('ASSET_URL', '/'),
 
+    // Caminho base dos assets do template (usado no data-assets-path do layout).
+    // Padrão: "/templates/assets/" (servidor apontando para a pasta public/).
+    // Se o servidor servir a raiz do projeto, use "/public/templates/assets/".
+    'assets_path' => env('ASSET_BASE_PATH', '/templates/assets/'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone
