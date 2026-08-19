@@ -51,7 +51,7 @@ class ProcedimentoSistemaController extends Controller
      */
     public function datatable(Request $request)
     {
-        $colunas = ['nm_paciente', 'medico', 'data_prescricao', 'qt_semanas', 'qt_semanas_aplicacao', 'valor_tratamento', 'situacao', 'situacao_financeira'];
+        $colunas = ['', 'nm_paciente', 'medico', 'data_prescricao', 'qt_semanas', 'qt_semanas_aplicacao', 'valor_tratamento', 'situacao', 'situacao_financeira'];
 
         $query = Prescricao::query()
             ->with(['paciente', 'semanas'])
@@ -97,7 +97,7 @@ class ProcedimentoSistemaController extends Controller
         $indiceColuna = (int) $request->input('order.0.column', 0);
         $direcao = strtolower($request->input('order.0.dir', 'asc')) === 'desc' ? 'desc' : 'asc';
 
-        if (isset($colunas[$indiceColuna])) {
+        if (isset($colunas[$indiceColuna]) && $colunas[$indiceColuna] !== '') {
             $col = $colunas[$indiceColuna];
             $query->orderBy($col === 'nm_paciente' ? 'pacientes.nm_paciente' : 'prescricaos.'.$col, $direcao);
         } else {
@@ -128,6 +128,8 @@ class ProcedimentoSistemaController extends Controller
             }
 
             return [
+                '<a href="'.route('procedimentos.show', $p->id).'" class="btn btn-sm btn-icon btn-outline-secondary" title="Visualizar">'
+                    .'<i class="ri-eye-line"></i></a>',
                 $p->paciente?->nm_paciente ?? '-',
                 $p->medico ?: '-',
                 $p->data_prescricao ? $p->data_prescricao->format('d/m/Y') : '-',
@@ -136,8 +138,6 @@ class ProcedimentoSistemaController extends Controller
                 valorDbForm($p->valor_tratamento),
                 '<span class="badge rounded-pill bg-label-primary">'.$p->situacao.'</span>',
                 '<span class="badge rounded-pill bg-label-success">'.$p->situacao_financeira.'</span>',
-                '<a href="'.route('procedimentos.show', $p->id).'" class="btn btn-sm btn-icon btn-outline-primary" title="Visualizar">'
-                    .'<i class="ri-eye-line"></i></a>',
             ];
         });
 
@@ -159,7 +159,7 @@ class ProcedimentoSistemaController extends Controller
     public function create()
     {
         $clinicas = Clinica::orderBy('nome')->get();
-        $medicamentos = Medicamento::orderBy('nome')->get(['id', 'nome', 'aplicacao']);
+        $medicamentos = Medicamento::orderBy('nome')->get(['id', 'nome', 'tipo', 'aplicacao']);
 
         $combos = Combo::with('medicamentos.medicamento')->orderBy('nome')->get()->each(function ($c) {
             $c->gera_aplicacao = $c->medicamentos->contains(fn ($cm) => $cm->medicamento && strtolower(trim((string) $cm->medicamento->aplicacao)) === 'sim');
@@ -207,6 +207,7 @@ class ProcedimentoSistemaController extends Controller
             'medico' => 'required|string|max:255',
             'data_prescricao' => 'required|date_format:d/m/Y',
             'qt_semanas' => 'required|integer|min:1|max:104',
+            'periodicidade_dias' => 'required|integer|min:1|max:90',
             'valor_tratamento' => 'nullable|string',
             'credito_em_aberto' => 'nullable|string',
             'tipo_atendimento' => 'required|string|max:100',
@@ -216,6 +217,7 @@ class ProcedimentoSistemaController extends Controller
 
         $dataInicial = Carbon::createFromFormat('d/m/Y', $request->data_prescricao);
         $qtSemanas = (int) $request->qt_semanas;
+        $periodicidade = max(1, (int) ($request->periodicidade_dias ?: 7));
 
         // Bloqueia data retroativa (anterior a hoje)
         if ($dataInicial->startOfDay() < now()->startOfDay()) {
@@ -246,9 +248,10 @@ class ProcedimentoSistemaController extends Controller
             ];
         }
 
-        // Resolve gera_aplicacao por item (derivado de medicamento.aplicacao == 'Sim')
+        // Resolve gera_aplicacao e requer_anexo por item
         foreach ($itens as &$item) {
             $item['gera_aplicacao'] = $this->itemGeraAplicacao($item['tipo'], $item['id']);
+            $item['requer_anexo'] = $this->itemRequerAnexo($item['tipo'], $item['id']);
         }
         unset($item);
 
@@ -264,9 +267,21 @@ class ProcedimentoSistemaController extends Controller
         }
         $qtSemanasAplicacao = count($semanasComAplicacao);
 
-        // Anexo prescrição obrigatório quando há medicação que exige (R3/D7)
-        if ($qtSemanasAplicacao > 0 && ! $request->hasFile('anexo_prescricao')) {
-            return back()->withInput()->withErrors(['anexo_prescricao' => 'Anexe a prescrição do médico (obrigatório quando há aplicação).']);
+        // Semanas que exigem anexo (aplicação "Sim" de medicamento NÃO-Procedimento)
+        $semanasRequerAnexo = [];
+        for ($w = 1; $w <= $qtSemanas; $w++) {
+            foreach ($itens as $item) {
+                if (in_array($w, $item['semanas']) && $item['requer_anexo']) {
+                    $semanasRequerAnexo[$w] = true;
+                    break;
+                }
+            }
+        }
+        $qtSemanasRequerAnexo = count($semanasRequerAnexo);
+
+        // Anexo prescrição obrigatório quando há aplicação de medicamento que exige (R3/D7)
+        if ($qtSemanasRequerAnexo > 0 && ! $request->hasFile('anexo_prescricao')) {
+            return back()->withInput()->withErrors(['anexo_prescricao' => 'Anexe a prescrição do médico (obrigatório quando há aplicação de medicamento).']);
         }
 
         // FERRO: dupla checagem obrigatória na recepção (R10)
@@ -297,7 +312,7 @@ class ProcedimentoSistemaController extends Controller
 
         $prescricaoId = null;
         DB::transaction(function () use (
-            $request, $dataInicial, $qtSemanas, $itens, $semanasComAplicacao, $qtSemanasAplicacao,
+            $request, $dataInicial, $qtSemanas, $periodicidade, $itens, $semanasComAplicacao, $qtSemanasAplicacao,
             $valorTratamento, $creditoEmAberto, $totalAParcelar, $parcelasInformadas, $vencimentos, $obsParcelas,
             &$prescricaoId
         ) {
@@ -313,6 +328,7 @@ class ProcedimentoSistemaController extends Controller
                 'qt_semanas' => $qtSemanas,
                 'qt_semanas_aplicacao' => $qtSemanasAplicacao,
                 'qt_parcelas' => $qtSemanasAplicacao,
+                'periodicidade_dias' => $periodicidade,
                 'semana_atual' => 0,
                 'valor_tratamento' => $valorTratamento,
                 'credito_em_aberto' => $creditoEmAberto,
@@ -325,7 +341,7 @@ class ProcedimentoSistemaController extends Controller
             // 2) Semanas + medicações
             $semanasModel = [];
             for ($w = 1; $w <= $qtSemanas; $w++) {
-                $dataPrevista = $dataInicial->copy()->addDays(($w - 1) * 7);
+                $dataPrevista = $dataInicial->copy()->addDays(($w - 1) * $periodicidade);
 
                 $semana = PrescricaoSemana::create([
                     'prescricao_id' => $prescricao->id,
@@ -848,9 +864,10 @@ class ProcedimentoSistemaController extends Controller
             $novasParcelas = [];
             $nrParcela = (int) $prescricao->financeiroParcelas()->max('nr_parcela') + 1;
             $qtComAplicacao = 0;
+            $periodicidade = max(1, (int) ($prescricao->periodicidade_dias ?: 7));
 
             for ($w = 1; $w <= $qtAdicionar; $w++) {
-                $dataPrevista = $dataBase->copy()->addDays(7 * $w);
+                $dataPrevista = $dataBase->copy()->addDays($periodicidade * $w);
                 $temAplicacao = false;
 
                 $semana = PrescricaoSemana::create([
@@ -1675,6 +1692,38 @@ class ProcedimentoSistemaController extends Controller
 
         if ($tipo === 'soro') {
             return Soro::whereHas('medicamentos.medicamento', fn ($q) => $q->whereRaw("LOWER(TRIM(aplicacao)) = 'sim'"))
+                ->where('id', $id)->exists();
+        }
+
+        return false;
+    }
+
+    /**
+     * Indica se o item exige anexo da prescrição: aplicação "Sim" de
+     * medicamento que NÃO é do tipo Procedimento (ex.: implante/procedimento
+     * não precisa de anexo).
+     */
+    private function itemRequerAnexo(string $tipo, int $id): bool
+    {
+        if ($tipo === 'medicamento') {
+            $med = Medicamento::find($id);
+
+            return $med
+                && strtolower(trim((string) $med->aplicacao)) === 'sim'
+                && $med->tipo !== 'Procedimento';
+        }
+
+        if ($tipo === 'combo') {
+            return Combo::whereHas('medicamentos.medicamento', fn ($q) => $q
+                ->whereRaw("LOWER(TRIM(aplicacao)) = 'sim'")
+                ->where('tipo', '<>', 'Procedimento'))
+                ->where('id', $id)->exists();
+        }
+
+        if ($tipo === 'soro') {
+            return Soro::whereHas('medicamentos.medicamento', fn ($q) => $q
+                ->whereRaw("LOWER(TRIM(aplicacao)) = 'sim'")
+                ->where('tipo', '<>', 'Procedimento'))
                 ->where('id', $id)->exists();
         }
 

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Clinica;
+use App\Models\EstoqueAberto;
 use App\Models\EstoqueSaldo;
 use App\Models\Medicamento;
 use Illuminate\Http\Request;
@@ -66,6 +67,40 @@ class EstoqueSistemaController extends Controller
         $clinicas = Clinica::orderBy('nome')->get();
 
         return view('estoque.estoques.index', compact('saldos', 'medicamentos', 'alertaPorMed', 'clinicas', 'clinicaId', 'clinica'));
+    }
+
+    /**
+     * Estoques abertos (frascos abertos / EstoqueAberto) da clínica, com
+     * filtros por clínica, medicamento e situação.
+     */
+    public function abertos(Request $request)
+    {
+        $user = auth()->user();
+
+        if ($user->isAdmin() && $request->filled('clinica_id')) {
+            $clinicaId = (int) $request->clinica_id;
+        } else {
+            $clinicaId = $user->clinica_id;
+        }
+        $clinica = Clinica::find($clinicaId);
+
+        $query = EstoqueAberto::with('medicamento', 'user', 'clinica')
+            ->where('clinica_id', $clinicaId);
+
+        if ($request->filled('medicamento_id')) {
+            $query->where('medicamento_id', (int) $request->medicamento_id);
+        }
+
+        if ($request->filled('situacao') && $request->situacao != 'todos') {
+            $query->where('situacao', $request->situacao);
+        }
+
+        $abertos = $query->orderBy('dt_cadastro', 'desc')->get();
+
+        $medicamentos = Medicamento::orderBy('nome')->get();
+        $clinicas = Clinica::orderBy('nome')->get();
+
+        return view('estoque.abertos.index', compact('abertos', 'medicamentos', 'clinicas', 'clinicaId', 'clinica'));
     }
 
     /**

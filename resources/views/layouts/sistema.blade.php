@@ -307,6 +307,12 @@
                         </a>
                       </li>
                       <li class="menu-item">
+                        <a href="{{ route('estoque.abertos') }}" class="menu-link">
+                          <i class="menu-icon tf-icons ri-flask-line"></i>
+                          <div data-i18n="Estoques Abertos">Estoques Abertos</div>
+                        </a>
+                      </li>
+                      <li class="menu-item">
                         <a href="{{ route('estoque.extrato') }}" class="menu-link">
                           <i class="menu-icon tf-icons ri-file-list-3-line"></i>
                           <div data-i18n="Extrato">Extrato</div>

@@ -236,6 +236,7 @@
 
       const BASE_NR = {{ (int) $prescricao->qt_semanas }};
       const DATA_BASE = '{{ $dataBase->format('Y-m-d') }}';
+      const PERIODICIDADE = {{ (int) ($prescricao->periodicidade_dias ?: 7) }};
 
       let state = { weeks: [], items: [] };
 
@@ -263,7 +264,7 @@
         state.weeks = [];
         for (let i = 1; i <= qt; i++) {
           const dt = new Date(base);
-          dt.setDate(base.getDate() + i * 7);
+          dt.setDate(base.getDate() + i * PERIODICIDADE);
           state.weeks.push({ num: i, data: formatarData(dt) });
         }
         state.items = [];

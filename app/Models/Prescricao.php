@@ -21,6 +21,7 @@ class Prescricao extends Model
         'qt_semanas',
         'qt_semanas_aplicacao',
         'qt_parcelas',
+        'periodicidade_dias',
         'semana_atual',
         'valor_tratamento',
         'credito_em_aberto',
@@ -33,6 +34,7 @@ class Prescricao extends Model
         'data_prescricao' => 'date',
         'valor_tratamento' => 'decimal:2',
         'credito_em_aberto' => 'decimal:2',
+        'periodicidade_dias' => 'integer',
     ];
 
     public function paciente()

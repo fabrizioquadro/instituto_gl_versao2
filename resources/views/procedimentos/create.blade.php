@@ -232,19 +232,54 @@
                 <label class="form-label">Quantidade de semanas <span class="text-danger">*</span></label>
                 <input type="number" id="qt_semanas" name="qt_semanas" class="form-control" min="1" max="104" required value="{{ old('qt_semanas', 6) }}" />
               </div>
-              <div class="col-md-3">
+              <div class="col-md-2">
+                <label class="form-label">Periodicidade (dias) <span class="text-danger">*</span></label>
+                <input type="number" id="periodicidade_dias" name="periodicidade_dias" class="form-control" min="1" max="90" required value="{{ old('periodicidade_dias', 7) }}" />
+              </div>
+              <div class="col-md-2">
                 <button type="button" id="btn-gerar-semanas" class="btn btn-outline-primary w-100">
                   <i class="ri-calendar-check-line me-1"></i>Gerar Semanas
                 </button>
               </div>
-              <div class="col-md-4">
-                <span class="text-muted small"><i class="ri-information-line me-1"></i>As semanas são geradas automaticamente (+7 dias cada). Adicione medicamento/combo/soro e marque em quais semanas ele será aplicado.</span>
+              <div class="col-md-3">
+                <span class="text-muted small"><i class="ri-information-line me-1"></i>As semanas são geradas automaticamente (intervalo padrão de 7 dias, podendo ser alterado). Adicione medicamento/combo/soro e marque em quais semanas ele será aplicado.</span>
               </div>
             </div>
 
             <hr class="my-4" />
 
             <div id="semanas-container" class="row g-2"></div>
+          </div>
+        </div>
+
+        {{-- ===== CARD: QUANTITATIVO DE MEDICAMENTOS ===== --}}
+        <div class="card border shadow-none mb-4">
+          <div class="card-header py-3">
+            <h6 class="mb-0 fw-semibold"><i class="ri-stack-line me-2 text-primary"></i>Quantitativo de Medicamentos</h6>
+          </div>
+          <div class="card-body">
+            <div class="table-responsive">
+              <table class="table table-sm table-hover mb-2">
+                <thead class="table-light">
+                  <tr>
+                    <th>Medicamento</th>
+                    <th class="text-end" style="width: 140px;">Quantidade</th>
+                  </tr>
+                </thead>
+                <tbody id="quantitativo-tbody">
+                  <tr>
+                    <td colspan="2" class="text-center text-muted py-3">Nenhum medicamento adicionado.</td>
+                  </tr>
+                </tbody>
+                <tfoot>
+                  <tr class="table-light">
+                    <th class="text-end">Total</th>
+                    <th class="text-end" id="quantitativo-total">0,00</th>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+            <span class="text-muted small"><i class="ri-information-line me-1"></i>Soma a quantidade de cada medicamento em todas as semanas; combos e soros contam também as quantidades dos componentes internos.</span>
           </div>
         </div>
 
@@ -418,6 +453,45 @@
       </div>
     </div>
   </div>
+
+  {{-- Modal: adicionar medicamento/combo/soro por PERIODICIDADE (sem escolher semana) --}}
+  <div class="modal fade" id="modal-item-periodicidade" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Adicionar por Periodicidade</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Tipo</label>
+            <select id="modal-per-tipo" class="form-select">
+              <option value="medicamento">Medicamento</option>
+              <option value="combo">Combo</option>
+              <option value="soro">Soro</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Item <span class="text-danger">*</span></label>
+            <select id="modal-per-item-id" class="form-select"></select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Quantidade</label>
+            <input type="number" id="modal-per-qtd" class="form-control" value="1" min="0.1" step="any" />
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Periodicidade de aplicação</label>
+            <select id="modal-per-periodicidade" class="form-select"></select>
+            <span class="text-muted small mt-1 d-block"><i class="ri-information-line me-1"></i>O item será aplicado a partir da semana <span id="per-semana-inicial">1</span> e depois a cada <span id="per-periodicidade-info">—</span>, nas semanas existentes.</span>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" id="modal-per-add" class="btn btn-primary">Adicionar</button>
+        </div>
+      </div>
+    </div>
+  </div>
 @endsection
 
 @section('scripts')
@@ -467,9 +541,27 @@
 
       // ---------- dados de itens (geram aplicação?) ----------
       @php
-        $medsJson = $medicamentos->map(fn ($m) => ['id' => $m->id, 'nome' => $m->nome, 'gera' => strtolower(trim((string) $m->aplicacao)) === 'sim', 'ferro' => $m->ehFerro()]);
-        $combosJson = $combos->map(fn ($c) => ['id' => $c->id, 'nome' => $c->nome, 'gera' => (bool) $c->gera_aplicacao]);
-        $sorosJson = $soros->map(fn ($s) => ['id' => $s->id, 'nome' => $s->nome, 'gera' => (bool) $s->gera_aplicacao]);
+        $medsJson = $medicamentos->map(fn ($m) => [
+            'id' => $m->id,
+            'nome' => $m->nome,
+            'gera' => strtolower(trim((string) $m->aplicacao)) === 'sim',
+            'anexo' => strtolower(trim((string) $m->aplicacao)) === 'sim' && $m->tipo !== 'Procedimento',
+            'ferro' => $m->ehFerro(),
+        ]);
+        $combosJson = $combos->map(fn ($c) => [
+            'id' => $c->id,
+            'nome' => $c->nome,
+            'gera' => (bool) $c->gera_aplicacao,
+            'anexo' => $c->medicamentos->contains(fn ($cm) => $cm->medicamento && strtolower(trim((string) $cm->medicamento->aplicacao)) === 'sim' && $cm->medicamento->tipo !== 'Procedimento'),
+            'componentes' => $c->medicamentos->filter(fn ($cm) => $cm->medicamento)->map(fn ($cm) => ['nome' => $cm->medicamento->nome, 'quantidade' => (float) $cm->quantidade])->values(),
+        ]);
+        $sorosJson = $soros->map(fn ($s) => [
+            'id' => $s->id,
+            'nome' => $s->nome,
+            'gera' => (bool) $s->gera_aplicacao,
+            'anexo' => $s->medicamentos->contains(fn ($sm) => $sm->medicamento && strtolower(trim((string) $sm->medicamento->aplicacao)) === 'sim' && $sm->medicamento->tipo !== 'Procedimento'),
+            'componentes' => $s->medicamentos->filter(fn ($sm) => $sm->medicamento)->map(fn ($sm) => ['nome' => $sm->medicamento->nome, 'quantidade' => (float) $sm->quantidade])->values(),
+        ]);
       @endphp
       const MEDS = @json($medsJson);
       const COMBOS = @json($combosJson);
@@ -567,19 +659,22 @@
       $('#btn-gerar-semanas').on('click', function () {
         const dtStr = $('#data_prescricao').val();
         const qt = parseInt($('#qt_semanas').val(), 10);
+        const periodicidade = parseInt($('#periodicidade_dias').val(), 10);
         if (!dtStr) { alert('Informe a data inicial.'); return; }
         if (!qt || qt < 1) { alert('Informe a quantidade de semanas.'); return; }
+        if (!periodicidade || periodicidade < 1) { alert('Informe a periodicidade (dias entre as semanas).'); return; }
         const partes = dtStr.split('/');
         const base = new Date(Number(partes[2]), Number(partes[1]) - 1, Number(partes[0]));
         state.weeks = [];
         for (let i = 0; i < qt; i++) {
           const dt = new Date(base);
-          dt.setDate(base.getDate() + i * 7);
+          dt.setDate(base.getDate() + i * periodicidade);
           state.weeks.push({ num: i + 1, data: formatarData(dt) });
         }
         state.items = [];
         renderSemanas();
         atualizarFinanceiro();
+        calcularQuantitativo();
       });
 
       function getItemAplicacao(item) {
@@ -595,6 +690,70 @@
           if (getItemAplicacao(item)) Object.keys(item.qtds).forEach(w => set.add(parseInt(w, 10)));
         });
         return set;
+      }
+
+      // Semanas que exigem anexo (aplicação de medicamento NÃO-Procedimento)
+      function getItemRequerAnexo(item) {
+        if (item.tipo === 'medicamento') return MEDS.find(x => x.id === item.id)?.anexo || false;
+        if (item.tipo === 'combo') return COMBOS.find(x => x.id === item.id)?.anexo || false;
+        if (item.tipo === 'soro') return SOROS.find(x => x.id === item.id)?.anexo || false;
+        return false;
+      }
+      function semanasRequerAnexo() {
+        const set = new Set();
+        state.items.forEach(item => {
+          if (getItemRequerAnexo(item)) Object.keys(item.qtds).forEach(w => set.add(parseInt(w, 10)));
+        });
+        return set;
+      }
+
+      // ---------- quantitativo total de medicamentos ----------
+      function calcularQuantitativo() {
+        const total = {};
+        const ordem = [];
+        function somar(nome, qtd) {
+          if (!(nome in total)) {
+            total[nome] = 0;
+            ordem.push(nome);
+          }
+          total[nome] += qtd;
+        }
+
+        state.items.forEach(item => {
+          let totalSemanas = 0;
+          Object.values(item.qtds).forEach(q => { totalSemanas += q; });
+          if (!totalSemanas) return;
+
+          if (item.tipo === 'medicamento') {
+            const med = MEDS.find(x => x.id === item.id);
+            if (med) somar(med.nome, totalSemanas);
+          } else if (item.tipo === 'combo') {
+            const c = COMBOS.find(x => x.id === item.id);
+            if (c && c.componentes) c.componentes.forEach(comp => somar(comp.nome, comp.quantidade * totalSemanas));
+          } else if (item.tipo === 'soro') {
+            const s = SOROS.find(x => x.id === item.id);
+            if (s && s.componentes) s.componentes.forEach(comp => somar(comp.nome, comp.quantidade * totalSemanas));
+          }
+        });
+
+        const nomes = Object.keys(total);
+        if (!nomes.length) {
+          $('#quantitativo-tbody').html('<tr><td colspan="2" class="text-center text-muted py-3">Nenhum medicamento adicionado.</td></tr>');
+          $('#quantitativo-total').text('0,00');
+          return;
+        }
+        nomes.sort((a, b) => total[b] - total[a]);
+
+        let linhas = '';
+        let grandTotal = 0;
+        nomes.forEach(nome => {
+          const qtd = Math.round(total[nome] * 100) / 100;
+          grandTotal += qtd;
+          linhas += '<tr><td>' + nome + '</td><td class="text-end fw-semibold">'
+            + Number(qtd).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</td></tr>';
+        });
+        $('#quantitativo-tbody').html(linhas);
+        $('#quantitativo-total').text(Number(Math.round(grandTotal * 100) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
       }
 
       function renderSemanas() {
@@ -630,9 +789,14 @@
                          <tbody id="tb-semana-${wk.num}"></tbody>
                        </table>`
                     : '<span class="text-muted small"><i class="ri-information-line me-1"></i>Sem aplicação (pausa)</span>'}
-                  <button type="button" class="btn btn-sm btn-outline-primary" onclick="abrirModalItem(${wk.num})">
-                    <i class="ri-add-line me-1"></i>Adicionar medicamento / combo / soro
-                  </button>
+                  <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="abrirModalItem(${wk.num})">
+                      <i class="ri-add-line me-1"></i>Adicionar medicamento / combo / soro
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="abrirModalPeriodicidade(${wk.num})" title="Adiciona partindo desta semana e depois a cada N dias">
+                      <i class="ri-calendar-repeat-line me-1"></i>Adicionar por periodicidade
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>`);
@@ -696,6 +860,7 @@
         renderSemanas();
         atualizarFinanceiro();
         atualizarAlertaFerro();
+        calcularQuantitativo();
       });
 
       // ---------- modal item ----------
@@ -753,6 +918,77 @@
         renderSemanas();
         atualizarFinanceiro();
         atualizarAlertaFerro();
+        calcularQuantitativo();
+      });
+
+      // ---------- modal item por PERIODICIDADE (sem escolher semana) ----------
+      function opcoesPeriodicidade() {
+        const base = parseInt($('#periodicidade_dias').val(), 10) || 7;
+        const $sel = $('#modal-per-periodicidade');
+        $sel.empty();
+        for (let k = 1; k <= 10; k++) {
+          const dias = base * k;
+          $sel.append(new Option(`A cada ${dias} dias (${k} semana${k > 1 ? 's' : ''})`, dias));
+        }
+        atualizarInfoPeriodicidade();
+      }
+      function atualizarInfoPeriodicidade() {
+        const opt = $('#modal-per-periodicidade option:selected');
+        $('#per-periodicidade-info').text(opt.text() || '—');
+      }
+
+      let modalPerSemanaInicial = 1;
+      window.abrirModalPeriodicidade = function (semanaInicial) {
+        if (!state.weeks.length) {
+          alert('Gere as semanas do tratamento primeiro.');
+          return;
+        }
+        modalPerSemanaInicial = semanaInicial && semanaInicial > 0 ? semanaInicial : 1;
+        $('#per-semana-inicial').text(modalPerSemanaInicial);
+        $('#modal-per-tipo').val('medicamento').trigger('change');
+        $('#modal-per-qtd').val('1');
+        opcoesPeriodicidade();
+        $('#modal-item-periodicidade').modal('show');
+      };
+
+      $('#modal-per-tipo').on('change', function () {
+        const tipo = this.value;
+        const $sel = $('#modal-per-item-id');
+        $sel.empty();
+        const lista = tipo === 'medicamento' ? MEDS : tipo === 'combo' ? COMBOS : SOROS;
+        lista.forEach(x => $sel.append(new Option(x.nome, x.id)));
+      });
+
+      $('#modal-per-periodicidade').on('change', atualizarInfoPeriodicidade);
+
+      $('#modal-per-add').on('click', function () {
+        const tipo = $('#modal-per-tipo').val();
+        const id = parseInt($('#modal-per-item-id').val(), 10);
+        const qtd = parseFloat($('#modal-per-qtd').val()) || 1;
+        const cadencia = parseInt($('#modal-per-periodicidade').val(), 10);
+        if (!id) { alert('Escolha o item.'); return; }
+        if (!cadencia || cadencia < 1) { alert('Escolha a periodicidade de aplicação.'); return; }
+
+        // Semanas em que o item será aplicado: da semana inicial e depois a cada `cadencia` dias
+        const base = parseInt($('#periodicidade_dias').val(), 10) || 7;
+        const inicio = modalPerSemanaInicial;
+        const semanas = [];
+        state.weeks.forEach(w => {
+          if (w.num < inicio) return;
+          const offset = (w.num - inicio) * base;
+          if (offset % cadencia === 0) semanas.push(w.num);
+        });
+        if (!semanas.length) { alert('Nenhuma semana se enquadra na periodicidade escolhida.'); return; }
+
+        const nome = $('#modal-per-item-id option:selected').text();
+        const qtds = {};
+        semanas.forEach(w => { qtds[w] = qtd; });
+        state.items.push({ tipo, id, nome, qtds });
+        $('#modal-item-periodicidade').modal('hide');
+        renderSemanas();
+        atualizarFinanceiro();
+        atualizarAlertaFerro();
+        calcularQuantitativo();
       });
 
       // ---------- financeiro ----------
@@ -895,11 +1131,11 @@
           return false;
         }
 
-        // Anexo obrigatório quando houver aplicação (mesma regra do servidor)
-        const temAplicacao = semanasComAplicacao().size > 0;
+        // Anexo obrigatório quando houver aplicação de medicamento NÃO-Procedimento (mesma regra do servidor)
+        const temAnexoObrigatorio = semanasRequerAnexo().size > 0;
         const anexo = document.querySelector('input[name="anexo_prescricao"]');
-        if (temAplicacao && anexo && anexo.files.length === 0) {
-          alert('Anexe a prescrição do médico (obrigatório quando há aplicação).');
+        if (temAnexoObrigatorio && anexo && anexo.files.length === 0) {
+          alert('Anexe a prescrição do médico (obrigatório quando há aplicação de medicamento).');
           e.preventDefault();
           return false;
         }

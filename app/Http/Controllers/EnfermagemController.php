@@ -282,21 +282,39 @@ class EnfermagemController extends Controller
 
             foreach ($semana->medicamentos as $m) {
                 if ($m->situacao === 'Aplicada' && ! $m->enviado_feegow) {
-                    $lotesInfo = [];
-                    foreach ($m->lotes as $l) {
-                        $lotesInfo[] = 'Lote '.$l->lote.' Código '.$l->codigo_barras;
-                    }
                     $usuario = $m->userAplicacao?->nome ?? 'Não identificado';
                     $dataHora = $m->aplicado_em ? $m->aplicado_em->format('d/m/Y H:i') : '-';
+                    $nome = $nomeDe($m);
+                    $obsMed = trim((string) $m->obs);
 
-                    $notas[] = 'APLICADO: '.$nomeDe($m).' '.$m->quantidade
-                        .' | '.($lotesInfo ? implode('; ', $lotesInfo) : 'sem lote')
-                        .' | Aplicado por: '.$usuario.' em '.$dataHora;
+                    if ($this->medicamentoEhProcedimento($m)) {
+                        // Procedimento não tem entrada/estoque (sem lote/código):
+                        // registra na Feegow apenas a obs informada na aplicação.
+                        $notas[] = 'APLICADO: '.($obsMed !== '' ? $obsMed : $nome.' '.$m->quantidade);
+                    } else {
+                        $lotesInfo = [];
+                        foreach ($m->lotes as $l) {
+                            $lotesInfo[] = 'Lote '.$l->lote.' Código '.$l->codigo_barras;
+                        }
+                        $notas[] = 'APLICADO: '.$nome.' '.$m->quantidade
+                            .' | '.($lotesInfo ? implode('; ', $lotesInfo) : 'sem lote')
+                            .' | Aplicado por: '.$usuario.' em '.$dataHora;
+                    }
                     $marcarEnviado[] = $m;
                 } elseif ($m->situacao === 'Pendente' && ! $m->enviado_feegow) {
                     $notas[] = 'PENDENTE: '.$nomeDe($m).' '.$m->quantidade;
                     $marcarEnviado[] = $m;
                 }
+            }
+
+            // Obs da aplicação SEMPRE no final da nota, como "OBS:"
+            $obsAplicacao = $semana->medicamentos
+                ->map(fn ($x) => trim((string) $x->obs))
+                ->filter(fn ($o) => $o !== '')
+                ->unique()
+                ->first();
+            if ($obsAplicacao !== null) {
+                $notas[] = 'OBS: '.$obsAplicacao;
             }
 
             if (empty($notas)) {
@@ -478,5 +496,32 @@ class EnfermagemController extends Controller
         }
 
         return $grupos;
+    }
+
+    /**
+     * Indica se a medicação da semana é um "Procedimento" (medicamento direto
+     * do tipo Procedimento, ou combo/soro cujos componentes são todos
+     * Procedimento). Procedimentos não têm entrada/estoque, então não têm
+     * lote/código de barras.
+     */
+    private function medicamentoEhProcedimento(PrescricaoSemanaMedicamento $m): bool
+    {
+        if ($m->medicamento_id && $m->medicamento) {
+            return $m->medicamento->tipo === 'Procedimento';
+        }
+
+        if ($m->combo_id && $m->combo) {
+            $tipos = $m->combo->medicamentos->pluck('medicamento.tipo')->filter();
+
+            return $tipos->isNotEmpty() && $tipos->every(fn ($t) => $t === 'Procedimento');
+        }
+
+        if ($m->soro_id && $m->soro) {
+            $tipos = $m->soro->medicamentos->pluck('medicamento.tipo')->filter();
+
+            return $tipos->isNotEmpty() && $tipos->every(fn ($t) => $t === 'Procedimento');
+        }
+
+        return false;
     }
 }

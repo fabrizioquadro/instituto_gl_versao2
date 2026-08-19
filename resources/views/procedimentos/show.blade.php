@@ -4,6 +4,19 @@
 
 @section('styles')
   <link rel="stylesheet" href="{{ asset('templates/assets/vendor/libs/flatpickr/flatpickr.css') }}" />
+  <style>
+    /* Acordeão das semanas: todas começam fechadas e a seta fica à esquerda do título */
+    #accordion-semanas .accordion-button {
+      display: flex;
+      align-items: center;
+      gap: .75rem;
+    }
+    #accordion-semanas .accordion-button::after {
+      order: -1;
+      margin-left: 0;
+      margin-right: 0;
+    }
+  </style>
 @endsection
 
 @section('content')
@@ -95,6 +108,7 @@
             <div class="col-md-3"><strong>Tipo de atendimento:</strong><br>{{ $prescricao->tipo_atendimento ?: '-' }}</div>
             <div class="col-md-3"><strong>Agendamento:</strong><br>{{ $prescricao->agendamento ?: '-' }}</div>
             <div class="col-md-3"><strong>Semanas:</strong><br>{{ $prescricao->qt_semanas }} ({{ $prescricao->qt_semanas_aplicacao }} com aplicação)</div>
+            <div class="col-md-3"><strong>Periodicidade:</strong><br>{{ $prescricao->periodicidade_dias ?: 7 }} dias</div>
             <div class="col-md-3"><strong>Parcelas:</strong><br>{{ $prescricao->qt_parcelas }}</div>
             <div class="col-md-3"><strong>Valor do tratamento:</strong><br>R$ {{ valorDbForm($prescricao->valor_tratamento) }}</div>
             <div class="col-md-3"><strong>Crédito em aberto:</strong><br>R$ {{ valorDbForm($prescricao->credito_em_aberto) }}</div>
@@ -125,138 +139,150 @@
               </a>
             </div>
           @endif
+          <div class="accordion" id="accordion-semanas">
           @forelse ($prescricao->semanas as $semana)
-            <div class="card border shadow-none mb-3">
-              @php
-                $parcelaSemana = $semana->financeiroParcela;
-                $parcelaPaga = ! $parcelaSemana || (float) $parcelaSemana->valor_pago >= (float) $parcelaSemana->valor_parcela;
-              @endphp
-              <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2 py-2">
-                <span class="fw-semibold">Semana {{ $semana->nr_semana }} — {{ $semana->data_prevista?->format('d/m/Y') }}</span>
-                <div class="d-flex align-items-center gap-2">
-                  <span class="badge rounded-pill bg-label-secondary">{{ $semana->situacao }}</span>
-                  @if ($prescricao->situacao !== 'Cancelada' && ! in_array($semana->situacao, ['Aplicado', 'Aplicação Parcial', 'Pendente']))
-                    <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modal-add-medicamento"
-                            onclick="document.getElementById('addmed_semana_id').value = {{ $semana->id }}">
-                      <i class="ri-add-line me-1"></i>Adicionar Medicamento
-                    </button>
-                  @endif
-                  @if ($semana->tem_aplicacao && $prescricao->situacao !== 'Cancelada')
-                    @if (in_array($semana->situacao, ['Fila de Aplicação', 'Atendimento', 'Aplicação Parcial', 'Pendente', 'Aplicado']))
-                      <a href="{{ route('enfermagem.aplicacao', $semana->id) }}" class="btn btn-sm btn-primary">
-                        <i class="ri-nurse-line me-1"></i>{{ $semana->situacao === 'Aplicado' ? 'Ver Aplicação' : 'Aplicar' }}
-                      </a>
-                    @elseif ($semana->situacao === 'Agendada')
-                      <form method="POST" action="{{ route('enfermagem.fila.enviar', $semana->id) }}" class="d-inline">
-                        @csrf
-                        <button type="submit" class="btn btn-sm btn-outline-primary"><i class="ri-time-line me-1"></i>Enviar para Fila</button>
-                      </form>
-                      @if (! $parcelaPaga)
-                        <button type="button" class="btn btn-sm btn-outline-warning" data-bs-toggle="modal" data-bs-target="#modal-autorizar-fila"
-                                onclick="document.getElementById('autorizar_semana_id').value = {{ $semana->id }}">
-                          <i class="ri-shield-keyhole-line me-1"></i>Enviar c/ autorização
-                        </button>
+            @php
+              $parcelaSemana = $semana->financeiroParcela;
+              $parcelaPaga = ! $parcelaSemana || (float) $parcelaSemana->valor_pago >= (float) $parcelaSemana->valor_parcela;
+              $open = false;
+            @endphp
+            <div class="accordion-item mb-2">
+              <h2 class="accordion-header" id="heading-semana-{{ $semana->id }}">
+                <div class="d-flex align-items-center gap-2 w-100">
+                  <button class="accordion-button {{ $open ? '' : 'collapsed' }} flex-grow-1" type="button"
+                          data-bs-toggle="collapse" data-bs-target="#collapse-semana-{{ $semana->id }}"
+                          aria-expanded="{{ $open ? 'true' : 'false' }}" aria-controls="collapse-semana-{{ $semana->id }}">
+                    <span class="fw-semibold">Semana {{ $semana->nr_semana }} — {{ $semana->data_prevista?->format('d/m/Y') }}</span>
+                    <span class="badge rounded-pill bg-label-secondary ms-2">{{ $semana->situacao }}</span>
+                  </button>
+                  <div class="d-flex align-items-center gap-2 pe-3 flex-wrap">
+                    @if ($prescricao->situacao !== 'Cancelada' && ! in_array($semana->situacao, ['Aplicado', 'Aplicação Parcial', 'Pendente']))
+                      <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modal-add-medicamento"
+                              onclick="document.getElementById('addmed_semana_id').value = {{ $semana->id }}">
+                        <i class="ri-add-line me-1"></i>Adicionar Medicamento
+                      </button>
+                    @endif
+                    @if ($semana->tem_aplicacao && $prescricao->situacao !== 'Cancelada')
+                      @if (in_array($semana->situacao, ['Fila de Aplicação', 'Atendimento', 'Aplicação Parcial', 'Pendente', 'Aplicado']))
+                        <a href="{{ route('enfermagem.aplicacao', $semana->id) }}" class="btn btn-sm btn-primary">
+                          <i class="ri-nurse-line me-1"></i>{{ $semana->situacao === 'Aplicado' ? 'Ver Aplicação' : 'Aplicar' }}
+                        </a>
+                      @elseif ($semana->situacao === 'Agendada')
+                        <form method="POST" action="{{ route('enfermagem.fila.enviar', $semana->id) }}" class="d-inline">
+                          @csrf
+                          <button type="submit" class="btn btn-sm btn-outline-primary"><i class="ri-time-line me-1"></i>Enviar para Fila</button>
+                        </form>
+                        @if (! $parcelaPaga)
+                          <button type="button" class="btn btn-sm btn-outline-warning" data-bs-toggle="modal" data-bs-target="#modal-autorizar-fila"
+                                  onclick="document.getElementById('autorizar_semana_id').value = {{ $semana->id }}">
+                            <i class="ri-shield-keyhole-line me-1"></i>Enviar c/ autorização
+                          </button>
+                        @endif
                       @endif
                     @endif
-                  @endif
-                </div>
-              </div>
-              <div class="card-body py-2">
-                @if ($semana->medicamentos->isEmpty())
-                  <span class="text-muted small">Sem aplicação (pausa)</span>
-                @else
-                  <div class="table-responsive">
-                    <table class="table table-sm table-striped mb-0">
-                      <thead>
-                        <tr>
-                          <th>Medicação</th>
-                          <th>Qtd</th>
-                          <th>Aplicação</th>
-                          <th>Situação</th>
-                          <th>Data prevista</th>
-                          <th>Chegada</th>
-                          <th>Atendimento</th>
-                          <th>Aplicado em</th>
-                          <th>Código</th>
-                          <th>Lote</th>
-                          <th>Vencimento</th>
-                          <th>Aplicado por</th>
-                          <th class="text-end">Ações</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        @foreach ($semana->medicamentos as $med)
-                          @php $medAplicada = $med->situacao === 'Aplicada' && $med->lotes->isNotEmpty(); @endphp
-                          <tr>
-                            <td>
-                              @if ($med->is_soro)
-                                <span class="badge bg-label-info">Soro</span> {{ $med->soro?->nome ?? $med->combo?->nome ?? $med->medicamento?->nome ?? '-' }}
-                              @elseif ($med->combo_id)
-                                <span class="badge bg-label-warning">Combo</span> {{ $med->combo?->nome ?? '-' }}
-                              @else
-                                {{ $med->medicamento?->nome ?? '-' }}
-                              @endif
-                            </td>
-                            <td>{{ $med->quantidade }}</td>
-                            <td>{{ $med->gera_aplicacao ? 'Sim' : 'Não' }}</td>
-                            <td>{{ $med->situacao }}</td>
-                            <td>{{ $med->data_prevista ? $med->data_prevista->format('d/m/Y') : '-' }}</td>
-                            <td>{{ $med->dt_hr_chegada ? $med->dt_hr_chegada->format('d/m/Y H:i') : '-' }}</td>
-                            <td>{{ $med->dt_hr_atendimento ? $med->dt_hr_atendimento->format('d/m/Y H:i') : '-' }}</td>
-                            <td>{{ $med->aplicado_em ? $med->aplicado_em->format('d/m/Y H:i') : '-' }}</td>
-                            <td>{!! $medAplicada ? $med->codigosDisplay() : '-' !!}</td>
-                            <td>{!! $medAplicada ? $med->lotesDisplay() : '-' !!}</td>
-                            <td>{!! $medAplicada ? $med->vencimentosDisplay() : '-' !!}</td>
-                            <td>{{ $med->userAplicacao?->nome ?? '-' }}</td>
-                            <td class="text-end">
-                              @if (! $med->aplicado_em && $prescricao->situacao !== 'Cancelada')
-                                <div class="d-inline-flex align-items-center gap-1">
-                                  <button type="button"
-                                          class="btn btn-sm btn-icon btn-outline-secondary btn-editar-medicamento"
-                                          data-id="{{ $med->id }}"
-                                          data-nome="{{ $med->soro?->nome ?? $med->combo?->nome ?? $med->medicamento?->nome ?? '-' }}"
-                                          data-qtd="{{ $med->quantidade }}"
-                                          data-prevista="{{ $med->data_prevista ? $med->data_prevista->format('d/m/Y') : '' }}"
-                                          data-obs="{{ $med->obs }}"
-                                          title="Editar medicamento">
-                                    <i class="ri-pencil-line"></i>
-                                  </button>
-                                  <form method="POST" action="{{ route('procedimentos.semana.medicamento.excluir', [$prescricao->id, $med->id]) }}" class="d-inline"
-                                        onsubmit="return confirm('Excluir este medicamento da semana? Ainda não foi aplicado.');">
-                                    @csrf
-                                    <button type="submit" class="btn btn-sm btn-icon btn-outline-danger" title="Excluir medicamento da semana">
-                                      <i class="ri-delete-bin-6-line"></i>
-                                    </button>
-                                  </form>
-                                </div>
-                              @else
-                                <span class="text-muted small">—</span>
-                              @endif
-                            </td>
-                          </tr>
-                        @endforeach
-                      </tbody>
-                    </table>
                   </div>
-                @endif
-                <hr class="my-2">
-                <div class="d-flex flex-column gap-1">
-                  <form method="POST" action="{{ route('procedimentos.semana.obs.atualizar', [$prescricao->id, $semana->id]) }}" class="row g-2 align-items-end">
-                    @csrf
-                    <div class="col-12 col-md-9">
-                      <label class="form-label small fw-semibold mb-1"><i class="ri-file-text-line me-1"></i>Observação da semana</label>
-                      <textarea name="obs" class="form-control form-control-sm" rows="2" placeholder="Anotações desta semana...">{{ $semana->obs }}</textarea>
+                </div>
+              </h2>
+              <div id="collapse-semana-{{ $semana->id }}" class="accordion-collapse collapse {{ $open ? 'show' : '' }}"
+                   aria-labelledby="heading-semana-{{ $semana->id }}">
+                <div class="accordion-body">
+                  @if ($semana->medicamentos->isEmpty())
+                    <span class="text-muted small">Sem aplicação (pausa)</span>
+                  @else
+                    <div class="table-responsive">
+                      <table class="table table-sm table-striped mb-0">
+                        <thead>
+                          <tr>
+                            <th>Medicação</th>
+                            <th>Qtd</th>
+                            <th>Aplicação</th>
+                            <th>Situação</th>
+                            <th>Data prevista</th>
+                            <th>Chegada</th>
+                            <th>Atendimento</th>
+                            <th>Aplicado em</th>
+                            <th>Código</th>
+                            <th>Lote</th>
+                            <th>Vencimento</th>
+                            <th>Aplicado por</th>
+                            <th class="text-end">Ações</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          @foreach ($semana->medicamentos as $med)
+                            @php $medAplicada = $med->situacao === 'Aplicada' && $med->lotes->isNotEmpty(); @endphp
+                            <tr>
+                              <td>
+                                @if ($med->is_soro)
+                                  <span class="badge bg-label-info">Soro</span> {{ $med->soro?->nome ?? $med->combo?->nome ?? $med->medicamento?->nome ?? '-' }}
+                                @elseif ($med->combo_id)
+                                  <span class="badge bg-label-warning">Combo</span> {{ $med->combo?->nome ?? '-' }}
+                                @else
+                                  {{ $med->medicamento?->nome ?? '-' }}
+                                @endif
+                              </td>
+                              <td>{{ $med->quantidade }}</td>
+                              <td>{{ $med->gera_aplicacao ? 'Sim' : 'Não' }}</td>
+                              <td>{{ $med->situacao }}</td>
+                              <td>{{ $med->data_prevista ? $med->data_prevista->format('d/m/Y') : '-' }}</td>
+                              <td>{{ $med->dt_hr_chegada ? $med->dt_hr_chegada->format('d/m/Y H:i') : '-' }}</td>
+                              <td>{{ $med->dt_hr_atendimento ? $med->dt_hr_atendimento->format('d/m/Y H:i') : '-' }}</td>
+                              <td>{{ $med->aplicado_em ? $med->aplicado_em->format('d/m/Y H:i') : '-' }}</td>
+                              <td>{!! $medAplicada ? $med->codigosDisplay() : '-' !!}</td>
+                              <td>{!! $medAplicada ? $med->lotesDisplay() : '-' !!}</td>
+                              <td>{!! $medAplicada ? $med->vencimentosDisplay() : '-' !!}</td>
+                              <td>{{ $med->userAplicacao?->nome ?? '-' }}</td>
+                              <td class="text-end">
+                                @if (! $med->aplicado_em && $prescricao->situacao !== 'Cancelada')
+                                  <div class="d-inline-flex align-items-center gap-1">
+                                    <button type="button"
+                                            class="btn btn-sm btn-icon btn-outline-secondary btn-editar-medicamento"
+                                            data-id="{{ $med->id }}"
+                                            data-nome="{{ $med->soro?->nome ?? $med->combo?->nome ?? $med->medicamento?->nome ?? '-' }}"
+                                            data-qtd="{{ $med->quantidade }}"
+                                            data-prevista="{{ $med->data_prevista ? $med->data_prevista->format('d/m/Y') : '' }}"
+                                            data-obs="{{ $med->obs }}"
+                                            title="Editar medicamento">
+                                      <i class="ri-pencil-line"></i>
+                                    </button>
+                                    <form method="POST" action="{{ route('procedimentos.semana.medicamento.excluir', [$prescricao->id, $med->id]) }}" class="d-inline"
+                                          onsubmit="return confirm('Excluir este medicamento da semana? Ainda não foi aplicado.');">
+                                      @csrf
+                                      <button type="submit" class="btn btn-sm btn-icon btn-outline-danger" title="Excluir medicamento da semana">
+                                        <i class="ri-delete-bin-6-line"></i>
+                                      </button>
+                                    </form>
+                                  </div>
+                                @else
+                                  <span class="text-muted small">—</span>
+                                @endif
+                              </td>
+                            </tr>
+                          @endforeach
+                        </tbody>
+                      </table>
                     </div>
-                    <div class="col-12 col-md-3 text-end">
-                      <button type="submit" class="btn btn-sm btn-outline-primary"><i class="ri-save-line me-1"></i>Salvar obs</button>
-                    </div>
-                  </form>
+                  @endif
+                  <hr class="my-2">
+                  <div class="d-flex flex-column gap-1">
+                    <form method="POST" action="{{ route('procedimentos.semana.obs.atualizar', [$prescricao->id, $semana->id]) }}" class="row g-2 align-items-end">
+                      @csrf
+                      <div class="col-12 col-md-9">
+                        <label class="form-label small fw-semibold mb-1"><i class="ri-file-text-line me-1"></i>Observação da semana</label>
+                        <textarea name="obs" class="form-control form-control-sm" rows="2" placeholder="Anotações desta semana...">{{ $semana->obs }}</textarea>
+                      </div>
+                      <div class="col-12 col-md-3 text-end">
+                        <button type="submit" class="btn btn-sm btn-outline-primary"><i class="ri-save-line me-1"></i>Salvar obs</button>
+                      </div>
+                    </form>
+                  </div>
                 </div>
               </div>
             </div>
           @empty
             <span class="text-muted">Nenhuma semana gerada.</span>
           @endforelse
+          </div>
         </div>
 
         {{-- ============ FINANCEIRO ============ --}}

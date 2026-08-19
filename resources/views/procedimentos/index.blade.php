@@ -76,6 +76,7 @@
         <table class="table table-hover w-100" id="table-procedimentos">
           <thead>
             <tr>
+              <th style="width: 70px;">Ações</th>
               <th>Paciente</th>
               <th>Médico</th>
               <th>Data Prescrição</th>
@@ -84,7 +85,6 @@
               <th>Valor Tratamento</th>
               <th>Situação</th>
               <th>Financeiro</th>
-              <th style="width: 80px;">Ações</th>
             </tr>
           </thead>
         </table>
@@ -122,7 +122,8 @@
             d.paciente_id = $('#paciente_filtro_id').val();
           }
         },
-        order: [[2, 'desc']],
+        order: [[3, 'desc']],
+        columnDefs: [{ targets: 0, orderable: false }],
         pageLength: 25,
         language: {
           sEmptyTable: 'Nenhum registro encontrado',

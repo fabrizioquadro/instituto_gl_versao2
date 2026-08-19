@@ -278,10 +278,8 @@
                                 <i class="ri-number-2"></i>
                               </button>
                             @else
-                              <input type="text" autocomplete="off"
-                                     name="codigo_barras_{{ $linha['key'] }}" id="codigo_barras_{{ $linha['key'] }}"
-                                     class="form-control form-control-sm" placeholder="Código"
-                                     data-med-key="{{ $med->id }}">
+                              <span class="badge bg-label-info">Procedimento — sem código</span>
+                              <input type="hidden" name="codigo_barras_{{ $linha['key'] }}" id="codigo_barras_{{ $linha['key'] }}" value="">
                             @endif
                           </div>
                         @endforeach
@@ -290,8 +288,12 @@
                       <td class="align-middle">
                         @foreach ($grupo['linhas'] as $linha)
                           <div class="mb-1">
-                            <input type="hidden" name="lote_{{ $linha['key'] }}" id="lote_{{ $linha['key'] }}" value="">
-                            <span id="lote_display_{{ $linha['key'] }}" class="badge bg-label-secondary fs-6 fw-normal">—</span>
+                            @if ($linha['medicamento']->tipo === 'Procedimento')
+                              <span class="text-muted small">—</span>
+                            @else
+                              <input type="hidden" name="lote_{{ $linha['key'] }}" id="lote_{{ $linha['key'] }}" value="">
+                              <span id="lote_display_{{ $linha['key'] }}" class="badge bg-label-secondary fs-6 fw-normal">—</span>
+                            @endif
                           </div>
                         @endforeach
                       </td>

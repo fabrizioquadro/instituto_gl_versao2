@@ -61,6 +61,7 @@ Route::middleware('auth')->prefix('estoque')->name('estoque.')->group(function (
     Route::get('estoques', [EstoqueSistemaController::class, 'index'])->name('estoques.index');
     Route::get('estoques/codigos', [EstoqueSistemaController::class, 'getCodigosBarras'])->name('estoques.get_codigos_barras');
     Route::get('estoques/lotes', [EstoqueSistemaController::class, 'getLotes'])->name('estoques.get_lotes');
+    Route::get('abertos', [EstoqueSistemaController::class, 'abertos'])->name('abertos');
 
     // Entradas (rotas extras antes do resource para não conflitar)
     Route::get('entradas/gerar-codigo-barras', [EntradaSistemaController::class, 'gerarCodigoBarras'])->name('entradas.gerar_codigo_barras');
